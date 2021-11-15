@@ -5,7 +5,7 @@ import capstone
 from graphviz import Digraph
 
 
-def draw(file, arch, mode):
+def draw(file, arch, mode, start, end):
     cs = capstone.Cs(arch=arch, mode=mode)
     cs.detail = True
     with open(file, mode="rb") as f:
@@ -13,13 +13,13 @@ def draw(file, arch, mode):
 
     blocks = {}
 
-    def is_jcc(ins):
+    def is_one_op(ins):
         if arch == capstone.CS_ARCH_X86:
             return ins.mnemonic[0] == 'j' and ins.mnemonic != 'jmp'
         if arch == capstone.CS_ARCH_ARM64:
             return ins.mnemonic[0:2] == 'b.'
 
-    def is_cbz(ins):
+    def is_two_op(ins):
         return ins.mnemonic == "cbz"
 
     def is_jmp(ins):
@@ -35,12 +35,9 @@ def draw(file, arch, mode):
             if ins.address in blocks:
                 block.pop()
                 return ins, "\l".join(block) + "\l", ins.address
-            if is_jcc(ins) or is_cbz(ins) or is_jmp(ins) or ins.mnemonic == 'ret':
+            if is_one_op(ins) or is_two_op(ins) or is_jmp(ins) or ins.mnemonic == 'ret':
                 return ins, "\l".join(block) + "\l", None
         return ins, "\l".join(block) + "\l", None
-
-    start = 0x0289C
-    end = 0x02E98
 
     stack = []
     stack.append(start)
@@ -57,21 +54,20 @@ def draw(file, arch, mode):
                 continue
             blocks[address]["rel"].append(eip.operands[0].imm)
             stack.append(eip.operands[0].imm)
-        elif is_cbz(eip):
+        elif is_two_op(eip):
             blocks[address]["rel"].append(eip.address + eip.size)
             stack.append(eip.address + eip.size)
             if eip.operands[1].type == 1:
                 continue
             blocks[address]["rel"].append(eip.operands[1].imm)
             stack.append(eip.operands[1].imm)
-        elif is_jcc(eip):
+        elif is_one_op(eip):
             blocks[address]["rel"].append(eip.address + eip.size)
             stack.append(eip.address + eip.size)
             if eip.operands[0].type == 1:
                 continue
             blocks[address]["rel"].append(eip.operands[0].imm)
             stack.append(eip.operands[0].imm)
-
 
     for b in blocks:
         for k, v in blocks.items():
@@ -96,5 +92,5 @@ def draw(file, arch, mode):
 
 
 if __name__ == '__main__':
-    # draw("issue", capstone.CS_ARCH_X86, capstone.CS_MODE_64)
-    draw("libnative-lib.so", capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
+    draw("issue", capstone.CS_ARCH_X86, capstone.CS_MODE_64, 0x46B, 0x51A)
+    draw("libnative-lib.so", capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM, 0x0289C, 0x02E98)
